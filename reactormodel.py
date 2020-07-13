@@ -40,9 +40,9 @@ def system(t, w, *p):
     # u*(muuS - D - ku) + A*rho*E*z*z - a*u
     # gamma*Dc*flux/rho - z*kz - E*z*z + a*u/(A*rho)
         
-    f = [D*(Sin - S) - (u*muuS/gamma + A*Dc*flux)/V,
+    f = [D*(Sin - S) - (u*muuS/gamma + A*flux)/V,
          u*(muuS - D - ku) + A*rho*E*z*z - a*u,
-             gamma*Dc*flux/rho - z*kz - E*z*z + a*u/(A*rho)
+             gamma*flux/rho - z*kz - E*z*z + a*u/(A*rho)
              ]
         
     return f
@@ -102,7 +102,7 @@ def Sz_from_k1k2(k1, k2):
     
 
 def jfun(S, z, switch):
-    ''' calculates dimensionalized flux value 
+    ''' calculates dimensionalized flux value C'(lambda)
     S: substrate concentration
     z : biofilm thickness
     switch: 0, 1, or 2
@@ -147,7 +147,7 @@ def jfun(S, z, switch):
         k1k2_arr = np.array([k1, k2])
         k1k2_arr = np.reshape(k1k2_arr, (1, -1))  
         
-        flux = regr_pckl.predict(k1k2_arr)*Dc*S/z
+        flux = regr_pckl.predict(k1k2_arr)*S/z
     
     elif switch == 1:
      
@@ -231,8 +231,8 @@ switch = 0
 
 if __name__ == '__main__':
    #S0_arr = [0.1, 0.25, 0.3, 0.4]
-   #S0_arr = [4, 10, 20, 30, 40, 45, 50, 65, 80, 100, 125, 150, 175, 200, 225, 250]
-   S0_arr = [4, 10, 20, 40 ,80]
+   S0_arr = [4, 10, 20, 30, 40, 45, 50, 65, 80, 100, 125, 150, 175, 200, 225, 250]
+   #S0_arr = [4, 10, 20, 40 ,80]
     
    def rel_err(true, approx):
        if true ==0:
@@ -316,7 +316,7 @@ print("S: %.4E u: %.4E z: %.4E"%(solution_num.y[0][-1], solution_num.y[1][-1], s
 # flux comparison file generator
 
 def make_Szj_file(flux):
-    '''creates file S lambda fluxnum fluxapprox for plotting'''
+    '''creates file  lambda S k1 k2 fluxnum fluxapprox for plotting'''
     if flux == 2:
         Szj_file = open("Szj_file_NN.txt", 'w+')
     if flux == 3:
