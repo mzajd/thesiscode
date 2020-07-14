@@ -187,7 +187,7 @@ def muu(S):
 # S0 can range from 0.1- 10
 S0 = 4
 # u normally 0.00001
-u0 = 0
+u0 = 0.00001
 # z normally 0.0001
 z0 = 0.0001
 
@@ -219,9 +219,9 @@ kz = 0.4
 ku = 0.4
 
 # attachment rate normally 1
-a = 0
+a = 1
 # erosion/detachment varies 22.8-1000 normally 22.8
-E = 0
+E = 22.8
 # yield
 gamma = 0.63
 
