@@ -56,7 +56,7 @@ def load_pckl_file(filename):
     return pckl_obj
 
         
-NN_pckl = load_pckl_file('NN_adaptive_pckg_interp.pkl')
+NN_pckl = load_pckl_file('KNN_adaptive_interp.pkl')
 
 regr_pckl = load_pckl_file('MLPRegressor.pkl')
 
@@ -133,8 +133,8 @@ def jfun(S, z, switch):
     
     elif switch == 2:
         
-        flux = NN_pckl(k1, k2)*S/z
-    
+        flux = NN_pckl.predict([[k1, k2]])*S/z
+
     elif switch == 3:
         
         #normalize the input
