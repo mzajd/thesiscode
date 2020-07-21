@@ -56,7 +56,8 @@ def load_pckl_file(filename):
     return pckl_obj
 
         
-NN_pckl = load_pckl_file('KNN_adaptive_interp.pkl')
+#NN_pckl = load_pckl_file('KNN_adaptive_interp.pkl')
+NN_pckl = load_pckl_file('NN_adaptive_pckg_interp.pkl')
 
 regr_pckl = load_pckl_file('MLPRegressor.pkl')
 
@@ -99,7 +100,42 @@ def Sz_from_k1k2(k1, k2):
     S = K/k2
     z = math.sqrt(k1*gamma*Dc*S/(rho*mumax))
     return S, z
+
+
+def Rittman_flux(S, b):
+    #nondimensionalize 
+    # S has nan values fpr some b values
+  
+    S_b_nondim = S/Kz
+    k = mumax/gamma
+    S_min_nondim = b/(mumax - b)
     
+    S_s_nondim = S_b_nondim
+
+    def alpha(Smin):
+        if Smin > 0.0001 and Smin <1:
+            return 1.5739 + 0.32075*(-math.log(S_min_nondim)**0.15213)
+        if Smin > 1 and Smin< 1000:
+            return 1.5739 - 0.37149*(math.log(S_min_nondim)**0.31344)
+        
+    def beta(Smin):
+        if Smin > 0.0001 and Smin <1:
+            return 0.5014 + 0.01985*(-math.log(S_min_nondim)**0.19476)
+        if Smin > 1 and Smin< 1000:
+            return 0.5014 - 0.02726*(math.log(S_min_nondim)**0.52256)
+    beta_par = beta(S_min_nondim)
+   # print('Smin %f'%(S_min_nondim))
+   # print('beta %f'%(beta_par))
+
+    alpha_par = alpha(S_min_nondim)
+    J_deep_nondim = (2*(S_s_nondim - math.log(1 + S_s_nondim)))**0.5
+   
+    S_diff = S_s_nondim/S_min_nondim-1
+    if S_diff < 0:
+        return 0
+    J_nondim = J_deep_nondim*math.tanh(alpha_par*(S_diff)**beta_par)
+    J = J_nondim*(Kz*k*rho*Dc)**0.5
+    return J
 
 def jfun(S, z, switch):
     ''' calculates dimensionalized flux value C'(lambda)
@@ -113,6 +149,7 @@ def jfun(S, z, switch):
     4 - uses analytical flux with pen depth
     5 - J2
     6 - J1
+    7-  Rittman flux
     '''
     if z <=0 or S <= 0:
         return 0
@@ -130,10 +167,12 @@ def jfun(S, z, switch):
         sol_num = solution.y[1][-1]*S/z
         
         flux = sol_num
+     
     
     elif switch == 2:
         
-        flux = NN_pckl.predict([[k1, k2]])*S/z
+        #flux = NN_pckl.predict([[k1, k2]])*S/z
+        flux = NN_pckl(k1, k2)*S/z
 
     elif switch == 3:
         
@@ -167,8 +206,13 @@ def jfun(S, z, switch):
         theta = math.sqrt(mumax*rho/(Dc*gamma*Kz))
     
         flux = S*theta*np.tanh(theta*z)
+        
+    elif switch ==7 :
+        #specify which loss value to use here
+        return Rittman_flux(S, 0.2847)
       
     if flux <= 0:
+        
          return 0
     else:
         return flux*Dc
@@ -185,7 +229,7 @@ def muu(S):
 
 # initial values
 # S0 can range from 0.1- 10
-S0 = 4
+S0 = 20
 # u normally 0.00001
 u0 = 0.00001
 # z normally 0.0001
@@ -230,8 +274,10 @@ switch = 0
 
 
 if __name__ == '__main__':
-   #S0_arr = [0.1, 0.25, 0.3, 0.4]
-   S0_arr = [4, 10, 20, 30, 40, 45, 50, 65, 80, 100, 125, 150, 175, 200, 225, 250]
+   S0_arr = [0.2, 0.3,0.5, 1.0, 2.0, 3.0, 4.0, 10.0,40.0, 80.0, 175.0, 250.0]
+
+   #S0_arr = [0.7, 1.0, 2.0, 3.0, 4.0, 10.0,40.0, 80.0, 175.0, 250.0]
+   #S0_arr = [4, 10, 20, 30, 40, 45, 50, 65, 80, 100, 125, 150, 175, 200, 225, 250]
    #S0_arr = [4, 10, 20, 40 ,80]
     
    def rel_err(true, approx):
@@ -245,7 +291,7 @@ if __name__ == '__main__':
    def print_Suzjtime_S0(S0_arr, flux): 
         '''
         flux follows the same switches as jfun
-        0 num, 1 alg, 2 nn, 3 mlp, 5 j2, 5 j1
+        0 num, 1 alg, 2 nn, 3 mlp, 4 pen depth, 5 j2, 6 j1
         ''' 
         approx_sol_arr = []
         num_sol_arr = []
@@ -254,14 +300,14 @@ if __name__ == '__main__':
         for Sinit in S0_arr:
             p = (D, Sinit, gamma, A, Dc, V, ku, rho, E, a, kz, flux)
             atime = time.time()
-            approx_sol_arr.append(solve_ivp(system, [0, 100], w0, method="LSODA",
+            approx_sol_arr.append(solve_ivp(system, [0, 100], [Sinit, u0, z0], method="LSODA",
                          args=(p), dense_output =True))
             atime = time.time() - atime
             approx_time_arr.append(atime)
             
             ntime = time.time()
             pnum = (D, Sinit, gamma, A, Dc, V, ku, rho, E, a, kz, 0)
-            num_sol_arr.append(solve_ivp(system, [0, 100], w0, method="LSODA",
+            num_sol_arr.append(solve_ivp(system, [0, 100], [Sinit, u0, z0], method="LSODA",
                          args=(pnum), dense_output =True))
             ntime = time.time() - ntime
             num_time_arr.append(ntime)
@@ -306,7 +352,7 @@ if __name__ == '__main__':
             print("\\\ \n \hline\n")
 
 # test run of reactor code        
-p = (D, S0, gamma, A, Dc, V, ku, rho, E, a, kz, 0)
+p = (D, S0, gamma, A, Dc, V, ku, rho, E, a, kz, 7)
 solution_num = solve_ivp(system, [0, 100], w0, method="LSODA",
              args=(p), dense_output =True)
 
@@ -321,6 +367,8 @@ def make_Szj_file(flux):
         Szj_file = open("Szj_file_NN.txt", 'w+')
     if flux == 3:
         Szj_file = open("Szj_file_MLP.txt", 'w+')
+    if flux == 7:
+        Szj_file = open("Szj_file_Ritt.txt", 'w+')
     
     for k1 in np.arange(0, 100):
         for k2 in np.arange(0, 100):
@@ -331,6 +379,115 @@ def make_Szj_file(flux):
         Szj_file.write("\n")
         
     Szj_file.close()
+
+
+#plot k1 and k2 as functions of time
+    
+def plot_k1k2(sol):
+     plt.plot(sol.t, k1_from_Sz(sol.y[0], sol.y[2]), 'r', label="k1")
+     plt.xlabel('t', fontsize =15)
+     plt.ylabel('k1', fontsize =15)
+     plt.show()
+     
+     plt.plot(sol.t, k2_from_S(sol.y[0]), 'r', label="k2")
+     plt.xlabel('t', fontsize =15)
+     plt.ylabel('k2', fontsize =15)
+     plt.show()
+     
+
+def plot_transients_vs_num(flux, S_start):
+    p_num = (D, S0, gamma, A, Dc, V, ku, rho, E, a, kz, 0)
+    p_flux = (D, S0, gamma, A, Dc, V, ku, rho, E, a, kz, flux)
+    
+    sol_num = solve_ivp(system, [0, 100], [S_start, u0, z0], method="LSODA",
+             args=(p_num), dense_output =True)
+    sol_flux = solve_ivp(system, [0, 100], [S_start, u0, z0], method="LSODA",
+             args=(p_flux), dense_output =True)
+    
+    plt.plot(sol_num.t, sol_num.y[0], 'r', label="numerical")
+    plt.plot(sol_flux.t, sol_flux.y[0], 'b', linestyle='dashed',label="approx")
+    plt.xlabel('t', fontsize =15)
+    plt.ylabel('S', fontsize =15)
+    plt.xlim([-1,20])
+    plt.legend()
+    plt.show()
+    
+    plt.plot(sol_num.t, sol_num.y[1], 'r', label="numerical")
+    plt.plot(sol_flux.t, sol_flux.y[1], 'b', linestyle='dashed',label="approx")
+    plt.xlabel('t', fontsize =15)
+    plt.ylabel('u', fontsize =15)
+    plt.xlim([-1,20])
+    plt.legend()
+    plt.show()
+    
+    plt.plot(sol_num.t, sol_num.y[2], 'r', label="numerical")
+    plt.plot(sol_flux.t, sol_flux.y[2], 'b', linestyle='dashed',label="approx")
+    plt.xlabel('t', fontsize =15)
+    plt.ylabel('z', fontsize =15)
+    plt.xlim([-1,20])
+    plt.legend()
+    plt.show()
+    
+def Rittman_flux_vs_b(S, z, b_array):
+    R = []
+    num = []
+    for b in b_array:
+        R.append(Rittman_flux(S, b))
+        num.append(jfun(S, z, 0))
+        
+    plt.plot(b_array, R,label="rittman")
+    plt.plot(b_array, num, label="numerical")
+    plt.xlabel('kz', fontsize =15)
+    plt.ylabel('flux', fontsize =15)
+    plt.legend()
+    plt.xlim([3,6])
+    plt.show()
+
+#Rittman_flux_vs_b(4, np.linspace(0.0006,2.999,20))
+#Rittman_flux_vs_b(236, np.linspace(3.0001,5.9,20))
+    
+def plot_all_approx_transients(S, var):
+    p_num = (D, S, gamma, A, Dc, V, ku, rho, E, a, kz, 0)
+    p_mlp = (D, S, gamma, A, Dc, V, ku, rho, E, a, kz, 3)
+    p_pen_dep = (D, S, gamma, A, Dc, V, ku, rho, E, a, kz, 4)
+    p_j2 =(D, S, gamma, A, Dc, V, ku, rho, E, a, kz, 5)
+    p_j1 =(D, S, gamma, A, Dc, V, ku, rho, E, a, kz, 6)
+    p_ritt = (D, S, gamma, A, Dc, V, ku, rho, E, a, kz, 7)
+    
+    sol_num = solve_ivp(system, [0, 100], [S, u0, z0], method="LSODA",
+             args=(p_num), dense_output =True)
+    sol_mlp = solve_ivp(system, [0, 100], [S, u0, z0], method="LSODA",
+             args=(p_mlp), dense_output =True)
+    sol_pen_dep = solve_ivp(system, [0, 100], [S, u0, z0], method="LSODA",
+             args=(p_pen_dep), dense_output =True)
+    sol_j2 = solve_ivp(system, [0, 100], [S, u0, z0], method="LSODA",
+             args=(p_j2), dense_output =True)
+    sol_j1 = solve_ivp(system, [0, 100], [S, u0, z0], method="LSODA",
+             args=(p_j1), dense_output =True)
+    sol_ritt = solve_ivp(system, [0, 100], [S, u0, z0], method="LSODA",
+             args=(p_ritt), dense_output =True)
+    
+    plt.plot(sol_num.t, sol_num.y[var], 'r', label="numerical")
+    plt.plot(sol_mlp.t, sol_mlp.y[var], 'b', linestyle='dashed',label="mlp")
+    plt.plot(sol_pen_dep.t, sol_pen_dep.y[var], 'y', label="alg pen depth")
+    plt.plot(sol_j2.t, sol_j2.y[var], 'g', linestyle='dashed',label="j2")
+    plt.plot(sol_j1.t, sol_j1.y[var], 'r', linestyle='dashed',label="j1")
+    plt.plot(sol_ritt.t, sol_ritt.y[var], 'b', linestyle='dotted',label="rittman")
+    
+    if var == 0:
+        plt.xlabel('t', fontsize =15)
+        plt.ylabel('S', fontsize =15)
+    if var == 1:
+        plt.xlabel('t', fontsize =15)
+        plt.ylabel('u', fontsize =15)
+    if var == 2:
+        plt.xlabel('t', fontsize =15)
+        plt.ylabel('z', fontsize =15)
+        
+    
+    plt.xlim([-1,10])
+    plt.legend()
+    plt.show()
 
 
    
